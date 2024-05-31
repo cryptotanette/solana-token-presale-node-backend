@@ -1,10 +1,10 @@
 {
-  "name": "Auto-Transfer-Solana",
+  "name": "Presale 'Wake up Joe'",
   "version": "1.0.0",
   "description": "",
   "main": "solana.js",
   "scripts": {
-    "start": "nodemon app.js"
+    "start": "nodemon src/app.js"
   },
   "author": "",
   "license": "ISC",

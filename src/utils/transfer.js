@@ -136,5 +136,4 @@ async function transferSPLtoken(amount = 1) {
   }
 }
 
-// module.exports = {transferSPLtoken}
-transferSPLtoken();
+module.exports = transferSPLtoken;
