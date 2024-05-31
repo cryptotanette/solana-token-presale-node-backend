@@ -46,20 +46,23 @@ function initializeConnection() {
 }
 
 // Main function orchestrates sending tokens by calling the defined functions in order.
-async function transferSPLtoken(amount = 1) {
+async function transferSPLtoken(to, amount = 1) {
   console.log("Starting Token Transfer Process");
 
   const connection = initializeConnection();
   const fromKeypair = initializeKeypair();
 
   // Address receiving the tokens
-  const destinationWallet = new PublicKey(process.env.TO_PUBLIC_KEY);
+  const destinationWallet = new PublicKey(to);
 
   // The SLP token being transferred, this is the address for USDC
   const mintAddress = new PublicKey(process.env.TOKEN_MINT_ADDRESS);
 
   // Config priority fee and amount to transfer
   const PRIORITY_RATE = 12345; // MICRO_LAMPORTS
+  if( parseInt(amount) <= 0){
+    throw("amount isn't correct");
+  }
   const transferAmount = amount > 1 ? amount : 1.111111111;
 
   // Instruction to set the compute unit price for priority fee
@@ -130,9 +133,10 @@ async function transferSPLtoken(amount = 1) {
     console.log(
       `Transaction Successfully Confirmed! 🎉 View on SolScan: https://solscan.io/tx/${txid}`
     );
-    return confirmation;
+    return txid;
   } catch (error) {
     console.error("Transaction failed", error);
+    return error;
   }
 }
 
