@@ -1,0 +1,19 @@
+{
+  "name": "Auto-Transfer-Solana",
+  "version": "1.0.0",
+  "description": "",
+  "main": "solana.js",
+  "scripts": {
+    "start": "nodemon app.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@solana/spl-token": "^0.4.6",
+    "@solana/web3.js": "^1.87.6",
+    "bs58": "^5.0.0",
+    "dotenv": "^16.3.1",
+    "express": "^4.19.2",
+    "nodemon": "^3.1.0"
+  }
+}
