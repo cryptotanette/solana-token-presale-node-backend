@@ -1,52 +1,59 @@
 require("dotenv").config();
-const express = require("express");
-const app = express();
-const transferSPLtoken =require("./utils/transfer");
-app.use(express.json());
+const transferSPLtoken = require("./utils/transfer");
 
-const MAIN_PRICE = 0.0000101471;
-const startTime = new Date().getTime();
-console.log("start time: ", startTime);
+const { Connection, clusterApiUrl, PublicKey } = require("@solana/web3.js");
 
-let price = MAIN_PRICE;
+const WALLET_ADDRESS = "JBEoBW3fbf7KctNMCJ3QZPRy8yUPzaDr2GkMHNw9uMJ6";
+const walletPublicKey = new PublicKey(WALLET_ADDRESS);
 
-function getPrice() {
-  let price = MAIN_PRICE;
-  const now = new Date().getTime();
-  console.log("now time: ", now);
-  let offset = Math.floor((now - startTime) / 86400 / 1000);
-  console.log("offset: ", offset);
-  while(offset >= 3){
-    price = price + (price * 0.1);
-    offset -= 3;
-  }
-  console.log("price", price);
-  return price;
+const connection = new Connection(clusterApiUrl("mainnet-beta"), "confirmed");
+
+async function listenForTransactions() {
+  let latestLoggedBalance = await connection.getBalance(walletPublicKey);
+  console.log(
+    `Listening for transactions to wallet: ${WALLET_ADDRESS} - ${latestLoggedBalance}`
+  );
+
+  const subscriptionId = connection.onAccountChange(
+    walletPublicKey,
+    async (accountInfo) => {
+      const newBalance = accountInfo.lamports;
+      const sendBalance = newBalance - latestLoggedBalance;
+      console.log(
+        `Account ${WALLET_ADDRESS} received ${sendBalance / 1e9} SOL`
+      );
+      // latestLoggedBalance = newBalance;
+      
+      try {
+        const sourceWallet = await fetchTransactionDetails(walletPublicKey);
+        const txid = await transferSPLtoken(sourceWallet);
+
+        return txid;
+      } catch (error) {
+        return error;
+      }
+
+    }
+  );
+
+  // connection.removeAccountChangeListener(subscriptionId);
 }
 
-app.post("/buy", async (req, res) => {
-  const {
-    body: { to, sol },
-  } = req;
+async function fetchTransactionDetails(publicKey) {
   try {
-    const price = getPrice();
-    const amount = Math.floor(sol / price);
-    console.log("amount: ", amount);
-    const confirmation = await transferSPLtoken(to, amount);
-    res.json(confirmation).status(200);
+    const transactionSignatures =
+      await connection.getConfirmedSignaturesForAddress2(publicKey, {
+        limit: 1,
+      });
+    if (transactionSignatures.length > 0) {
+      const transactionDetails = await connection.getConfirmedTransaction(
+        transactionSignatures[0].signature
+      );
+      return transactionDetails.transaction.feePayer;
+    }
   } catch (error) {
-    console.error(error);
-    res.json({error: "token transfer failed"}).status(400);
+    console.error("Error fetching transaction details:", error);
+    throw(error);
   }
-});
-
-app.get("/price", async (_, res) => {
-  const price = getPrice();
-  res.json({price: price}).status(200);
-});
-
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+}
+listenForTransactions();

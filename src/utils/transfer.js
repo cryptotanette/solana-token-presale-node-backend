@@ -63,7 +63,7 @@ async function transferSPLtoken(to, amount = 1) {
   if( parseInt(amount) <= 0){
     throw("amount isn't correct");
   }
-  const transferAmount = amount > 1 ? amount : 1.111111111;
+  const transferAmount = amount > 1 ? amount : 1;
 
   // Instruction to set the compute unit price for priority fee
   const PRIORITY_FEE_INSTRUCTIONS = ComputeBudgetProgram.setComputeUnitPrice({
@@ -136,7 +136,7 @@ async function transferSPLtoken(to, amount = 1) {
     return txid;
   } catch (error) {
     console.error("Transaction failed", error);
-    return error;
+    throw error;
   }
 }
 
