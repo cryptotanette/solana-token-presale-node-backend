@@ -25,7 +25,7 @@ async function getNumberDecimals(mintAddress, connection) {
 
 // Initializes a Keypair from the secret key stored in environment variables. Essential for signing transactions.
 function initializeKeypair() {
-  const privateKey = new Uint8Array(bs58.decode(process.env.PRIVATE_KEY));
+  const privateKey = new Uint8Array(JSON.parse(process.env.PRIVATE_KEY.toString()));  
   const keypair = Keypair.fromSecretKey(privateKey);
   console.log(
     `Initialized Keypair: Public Key - ${keypair.publicKey.toString()}`
