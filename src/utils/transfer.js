@@ -55,6 +55,10 @@ async function transferSPLtoken(to, amount = 1) {
   // Address receiving the tokens
   const destinationWallet = new PublicKey(to);
 
+  if(fromKeypair.publicKey.toString() == destinationWallet.toString()){
+    throw("same wallet");
+  }
+
   // The SLP token being transferred, this is the address for USDC
   const mintAddress = new PublicKey(process.env.TOKEN_MINT_ADDRESS);
 
@@ -79,7 +83,7 @@ async function transferSPLtoken(to, amount = 1) {
     mintAddress,
     fromKeypair.publicKey
   );
-  console.log(`Source Account: ${sourceAccount.address.toString()}`);
+  console.log(`from ${sourceAccount.address.toString()}`);
 
   let destinationAccount = await getOrCreateAssociatedTokenAccount(
     connection,
@@ -87,7 +91,7 @@ async function transferSPLtoken(to, amount = 1) {
     mintAddress,
     destinationWallet
   );
-  console.log(`Destination Account: ${destinationAccount.address.toString()}`);
+  console.log(`to ${destinationAccount.address.toString()}`);
 
   // Adjusts the transfer amount according to the token's decimals to ensure accurate transfers.
   const transferAmountInDecimals = transferAmount * Math.pow(10, decimals);
