@@ -19,44 +19,25 @@ require("dotenv/config");
 async function getNumberDecimals(mintAddress, connection) {
   const info = await connection.getParsedAccountInfo(mintAddress);
   const decimals = (info.value?.data).parsed.info.decimals;
-//   console.log(`Token Decimals: ${decimals}`);
+  //   console.log(`Token Decimals: ${decimals}`);
   return decimals;
 }
 
-// Initializes a Keypair from the secret key stored in environment variables. Essential for signing transactions.
-function initializeKeypair() {
-  const privateKey = new Uint8Array(JSON.parse(process.env.PRIVATE_KEY.toString()));  
-  const keypair = Keypair.fromSecretKey(privateKey);
-  console.log(
-    `Initialized Keypair: Public Key - ${keypair.publicKey.toString()}`
-  );
-  return keypair;
-}
-
-// Sets up the connection to the Solana cluster, utilizing environment variables for configuration.
-function initializeConnection() {
-  const rpcUrl = process.env.RPC;
-  const connection = new Connection(rpcUrl, {
-    commitment: "confirmed",
-    //   wsEndpoint: process.env.SOLANA_WSS,
-  });
-  // Redacting part of the RPC URL for security/log clarity
-  console.log(`Initialized Connection to Solana RPC: ${rpcUrl.slice(0, -32)}`);
-  return connection;
-}
-
 // Main function orchestrates sending tokens by calling the defined functions in order.
-async function transferSPLtoken(to, amount = 1) {
-  console.log("Starting Token Transfer Process");
+async function transferSPLtoken(
+  sourceWalletKeypair,
+  destinationWalletPublickey,
+  amount = 1,
+  connection
+) {
+  console.log(`Transfer: ${amount} tokens to ${destinationWalletPublickey}`);
 
-  const connection = initializeConnection();
-  const fromKeypair = initializeKeypair();
-
-  // Address receiving the tokens
-  const destinationWallet = new PublicKey(to);
-
-  if(fromKeypair.publicKey.toString() == destinationWallet.toString()){
-    throw("same wallet");
+  if (
+    sourceWalletKeypair.publicKey.toString() ==
+    destinationWalletPublickey.toString()
+  ) {
+    console.log("Warning: same wallet");
+    return;
   }
 
   // The SLP token being transferred, this is the address for USDC
@@ -64,8 +45,8 @@ async function transferSPLtoken(to, amount = 1) {
 
   // Config priority fee and amount to transfer
   const PRIORITY_RATE = 12345; // MICRO_LAMPORTS
-  if( parseInt(amount) <= 0){
-    throw("amount isn't correct");
+  if (parseInt(amount) <= 0) {
+    throw "amount isn't correct";
   }
   const transferAmount = amount > 1 ? amount : 1;
 
@@ -79,17 +60,17 @@ async function transferSPLtoken(to, amount = 1) {
   // Creates or fetches the associated token accounts for the sender and receiver.
   let sourceAccount = await getOrCreateAssociatedTokenAccount(
     connection,
-    fromKeypair,
+    sourceWalletKeypair,
     mintAddress,
-    fromKeypair.publicKey
+    sourceWalletKeypair.publicKey
   );
   console.log(`from ${sourceAccount.address.toString()}`);
 
   let destinationAccount = await getOrCreateAssociatedTokenAccount(
     connection,
-    fromKeypair,
+    sourceWalletKeypair,
     mintAddress,
-    destinationWallet
+    destinationWalletPublickey
   );
   console.log(`to ${destinationAccount.address.toString()}`);
 
@@ -101,19 +82,19 @@ async function transferSPLtoken(to, amount = 1) {
     // Those addresses are the Associated Token Accounts belonging to the sender and receiver
     sourceAccount.address,
     destinationAccount.address,
-    fromKeypair.publicKey,
+    sourceWalletKeypair.publicKey,
     transferAmountInDecimals
   );
   let latestBlockhash = await connection.getLatestBlockhash("confirmed");
 
   // Compiles and signs the transaction message with the sender's Keypair.
   const messageV0 = new TransactionMessage({
-    payerKey: fromKeypair.publicKey,
+    payerKey: sourceWalletKeypair.publicKey,
     recentBlockhash: latestBlockhash.blockhash,
     instructions: [PRIORITY_FEE_INSTRUCTIONS, transferInstruction],
   }).compileToV0Message();
   const versionedTransaction = new VersionedTransaction(messageV0);
-  versionedTransaction.sign([fromKeypair]);
+  versionedTransaction.sign([sourceWalletKeypair]);
   console.log("Transaction Signed. Preparing to send...");
 
   // Attempts to send the transaction to the network, handling success or failure.

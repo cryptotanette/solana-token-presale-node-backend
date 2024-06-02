@@ -1,69 +1,103 @@
 require("dotenv").config();
+const { getOrCreateAssociatedTokenAccount } = require("@solana/spl-token");
 const transferSPLtoken = require("./utils/transfer");
+const {
+  Connection,
+  clusterApiUrl,
+  PublicKey,
+  Keypair,
+} = require("@solana/web3.js");
 
-const { Connection, clusterApiUrl, PublicKey } = require("@solana/web3.js");
+const bs58 = require("bs58");
 
-const WALLET_ADDRESS = process.env.PUBLIC_KEY;
-const TOKEN_ACCOUNT_ADDRESS = process.env.TOKEN_ACCOUNT_ADDRESS;
-const walletPublicKey = new PublicKey(WALLET_ADDRESS);
-const tokenAccountPublicKey = new PublicKey(TOKEN_ACCOUNT_ADDRESS);
+const start = new Date(process.env.PRESALE_START).getTime();
+const presaleStartPrice = process.env.PRESALE_START_PRICE;
+const tokenWalletKeypair = initializeKeypair();
 
-const MAIN_PRICE = 0.0000101471;
-const startTime = new Date("6/1/24").getTime();
-
-function getPrice() {
-  let price = MAIN_PRICE;
+async function presaleStart() {
+  console.log("Start presale: ", new Date(start));
+  
+  const connection = initializeConnection();
+  
   const now = new Date().getTime();
-  console.log("now time: ", now);
-  let offset = Math.floor((now - startTime) / 86400 / 1000);
-  console.log("offset: ", offset);
-  while (offset >= 3) {
-    price = price + price * 0.1;
-    offset -= 3;
+  const cycle = getPresaleCycle();
+
+  if (cycle >= process.env.PRESALE_MAX_CYCLE) {
+    console.log("End presale!");
+    return;
   }
-  console.log("current price", price);
-  return price;
-}
 
-const connection = new Connection(clusterApiUrl("mainnet-beta"), "confirmed");
-
-async function listenForTransactions() {
-  let latestLoggedBalance = await connection.getBalance(walletPublicKey);
-  let latestLoggedTokenBalance = await getTokenAccountBalanceWithNumber(tokenAccountPublicKey);
+  const avaliableTokenBalanceForPresale =
+    await getAvaliableTokenBalanceForPresale(tokenWalletKeypair, connection);
   console.log(
-    `Now token balance: ${latestLoggedTokenBalance}`
+    `Presale now: cycle ${cycle}, available token ${avaliableTokenBalanceForPresale}`
   );
 
+  const walletPublicKey = new PublicKey(process.env.PUBLIC_KEY);
+  listenForTransactions(walletPublicKey, connection);
+}
+
+function getPricePerToken() {
+  const now = new Date().getTime();
+  const cycle = getPresaleCycle();
+  const price = presaleStartPrice * 1.1 ** cycle;
+
+  return price ? price : presaleStartPrice;
+}
+
+// Sets up the connection to the Solana cluster, utilizing environment variables for configuration.
+function initializeConnection() {
+  const rpcUrl = process.env.RPC;
+  const connection = new Connection(rpcUrl, {
+    commitment: "confirmed",
+    // wsEndpoint: process.env.SOLANA_WSS,
+  });
+  // Redacting part of the RPC URL for security/log clarity
+  console.log(`Initialized Connection to Solana RPC: ${rpcUrl.slice(0, -32)}`);
+  return connection;
+}
+
+// Initializes a Keypair from the secret key stored in environment variables. Essential for signing transactions.
+function initializeKeypair() {
+  const privateKey = new Uint8Array(bs58.decode(process.env.PRIVATE_KEY));
+  const keypair = Keypair.fromSecretKey(privateKey);
   console.log(
-    `Listening for transactions to wallet: ${WALLET_ADDRESS} - ${latestLoggedBalance}`
+    `Initialized Keypair: Public Key - ${keypair.publicKey.toString()}`
+  );
+  return keypair;
+}
+
+async function listenForTransactions(walletPublicKey, connection) {
+  let latestLoggedBalance = await connection.getBalance(walletPublicKey);
+  console.log(
+    `Listening for transactions to wallet: ${walletPublicKey.toString()} (${
+      latestLoggedBalance / 1e9
+    } SOL)`
   );
 
   const subscriptionId = connection.onAccountChange(
     walletPublicKey,
     async (accountInfo) => {
-      const newBalance = accountInfo.lamports;
-      const sendBalance = (newBalance - latestLoggedBalance) / 1e9;
-      latestLoggedBalance = newBalance;
-      if (sendBalance > 0) {
-        console.log(
-          `Account ${WALLET_ADDRESS} received ${sendBalance} SOL`
-        );  
-      } else {
-        console.log(
-          `Account ${WALLET_ADDRESS} send ${sendBalance} SOL`
-        );
-        return;
-      }
-      
-
       try {
-        const sourceWallet = await fetchTransactionDetails(walletPublicKey);
-        
-        const price = getPrice();
-        const amount = Math.floor(sendBalance / price);
-        console.log("token amount: ", amount);
-        
-        const txid = await transferSPLtoken(sourceWallet, amount);
+        const newBalance = accountInfo.lamports;
+        const receivedBalance = (newBalance - latestLoggedBalance) / 1e9;
+        latestLoggedBalance = newBalance;
+        if (receivedBalance <= 0) {
+          return;
+        }
+        const senderWallet = await fetchTransactionDetails(
+          walletPublicKey,
+          connection
+        );
+        console.log(
+          `Account ${walletPublicKey.toString()} receive ${receivedBalance} SOL from ${senderWallet}`
+        );
+
+        const price = Number(getPricePerToken());
+        console.log(`price per token ${price}`);
+        const amount = Math.floor(receivedBalance / price);
+
+        const txid = await transferSPLtoken(tokenWalletKeypair, senderWallet, amount, connection);
 
         return txid;
       } catch (error) {
@@ -76,14 +110,29 @@ async function listenForTransactions() {
   // connection.removeAccountChangeListener(subscriptionId);
 }
 
-async function getTokenAccountBalanceWithNumber(tokenPublicKey){
-  const {amount, decimals} = (await connection.getTokenAccountBalance(tokenPublicKey)).value;
-  return Math.floor(amount / (10 ** decimals));
+async function getAvaliableTokenBalanceForPresale(
+  tokenWalletKeypair,
+  connection
+) {
+  tokenMinkPublickey = new PublicKey(process.env.TOKEN_MINT_ADDRESS);
+
+  const tokenAccount = await getOrCreateAssociatedTokenAccount(
+    connection,
+    tokenWalletKeypair,
+    tokenMinkPublickey,
+    tokenWalletKeypair.publicKey
+  );
+
+  const { amount, decimals } = (
+    await connection.getTokenAccountBalance(tokenAccount.address)
+  ).value;
+  return Math.floor(amount / 10 ** decimals);
 }
-async function fetchTransactionDetails(publicKey) {
+
+async function fetchTransactionDetails(walletPublicKey, connection) {
   try {
     const transactionSignatures =
-      await connection.getConfirmedSignaturesForAddress2(publicKey, {
+      await connection.getConfirmedSignaturesForAddress2(walletPublicKey, {
         limit: 1,
       });
     if (transactionSignatures.length > 0) {
@@ -98,4 +147,13 @@ async function fetchTransactionDetails(publicKey) {
   }
 }
 
-listenForTransactions();
+function getPresaleCycle(
+  now = new Date().getTime(),
+  due = process.env.PRESALE_INCREASE_TIME
+) {
+  const cycle = Math.floor((now - start) / 86400 / 1000 / due);
+  return cycle ? cycle : 0;
+}
+
+// listenForTransactions();
+presaleStart();
