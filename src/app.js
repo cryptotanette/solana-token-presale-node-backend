@@ -12,12 +12,13 @@ const bs58 = require("bs58");
 
 const start = new Date(process.env.PRESALE_START).getTime();
 const presaleStartPrice = process.env.PRESALE_START_PRICE;
+const tokenWalletKeypair = initializeKeypair();
 
 async function presaleStart() {
   console.log("Start presale: ", new Date(start));
-
+  
   const connection = initializeConnection();
-
+  
   const now = new Date().getTime();
   const cycle = getPresaleCycle(start, now);
 
@@ -26,7 +27,6 @@ async function presaleStart() {
     return;
   }
 
-  const tokenWalletKeypair = initializeKeypair();
   const avaliableTokenBalanceForPresale =
     await getAvaliableTokenBalanceForPresale(tokenWalletKeypair, connection);
   console.log(
@@ -45,7 +45,6 @@ function getPricePerToken() {
   return price ? price : presaleStartPrice;
 }
 
-// const connection = new Connection(process.env.RPC, "confirmed");
 // Sets up the connection to the Solana cluster, utilizing environment variables for configuration.
 function initializeConnection() {
   const rpcUrl = process.env.RPC;
@@ -83,26 +82,24 @@ async function listenForTransactions(walletPublicKey, connection) {
         const newBalance = accountInfo.lamports;
         const receivedBalance = (newBalance - latestLoggedBalance) / 1e9;
         latestLoggedBalance = newBalance;
+        if (receivedBalance <= 0) {
+          return;
+        }
         const senderWallet = await fetchTransactionDetails(
           walletPublicKey,
           connection
         );
-        if (receivedBalance > 0) {
-          console.log(
-            `Account ${walletPublicKey.toString()} receive ${receivedBalance} SOL fron ${senderWallet}`
-          );
-        } else {
-          return;
-        }
+        console.log(
+          `Account ${walletPublicKey.toString()} receive ${receivedBalance} SOL from ${senderWallet}`
+        );
 
         const price = Number(getPricePerToken());
         console.log(`price per token ${price}`);
         const amount = Math.floor(receivedBalance / price);
 
-        console.log(`Transfer: ${amount} tokens from ${senderWallet}`);
-        // const txid = await transferSPLtoken(senderWallet, amount);
+        const txid = await transferSPLtoken(tokenWalletKeypair, senderWallet, amount, connection);
 
-        // return txid;
+        return txid;
       } catch (error) {
         console.log("error: ", error);
         return error;
