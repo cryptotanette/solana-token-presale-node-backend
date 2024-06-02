@@ -1,12 +1,19 @@
 require("dotenv").config();
 const { getOrCreateAssociatedTokenAccount } = require("@solana/spl-token");
 const transferSPLtoken = require("./utils/transfer");
-const { Connection, clusterApiUrl, PublicKey, Keypair } = require("@solana/web3.js");
+const {
+  Connection,
+  clusterApiUrl,
+  PublicKey,
+  Keypair,
+} = require("@solana/web3.js");
 
 const bs58 = require("bs58");
 
+const start = new Date(process.env.PRESALE_START).getTime();
+const presaleStartPrice = process.env.PRESALE_START_PRICE;
+
 async function presaleStart() {
-  const start = new Date(process.env.PRESALE_START).getTime();
   console.log("Start presale: ", new Date(start));
 
   const connection = initializeConnection();
@@ -20,26 +27,22 @@ async function presaleStart() {
   }
 
   const tokenWalletKeypair = initializeKeypair();
-  const avaliableTokenBalanceForPresale = await getAvaliableTokenBalanceForPresale(
-    tokenWalletKeypair,
-    connection);
-  console.log(`Presale now: cycle ${cycle}, available token ${avaliableTokenBalanceForPresale}`);
-
+  const avaliableTokenBalanceForPresale =
+    await getAvaliableTokenBalanceForPresale(tokenWalletKeypair, connection);
+  console.log(
+    `Presale now: cycle ${cycle}, available token ${avaliableTokenBalanceForPresale}`
+  );
 
   const walletPublicKey = new PublicKey(process.env.PUBLIC_KEY);
   listenForTransactions(walletPublicKey, connection);
 }
 
-function getPrice() {
-  let price = MAIN_PRICE;
+function getPricePerToken() {
   const now = new Date().getTime();
-  console.log("now time: ", now);
-  let offset = Math.floor((now - PRESALE_START) / 86400 / 1000 / 3);
-  console.log("offset: ", offset);
-  price = price * 1.1 ** offset;
+  const cycle = getPresaleCycle(start, now);
+  const price = presaleStartPrice * 1.1 ** cycle;
 
-  console.log("current price", price);
-  return price;
+  return price ? price : presaleStartPrice;
 }
 
 // const connection = new Connection(process.env.RPC, "confirmed");
@@ -68,47 +71,38 @@ function initializeKeypair() {
 async function listenForTransactions(walletPublicKey, connection) {
   let latestLoggedBalance = await connection.getBalance(walletPublicKey);
   console.log(
-    `Listening for transactions to wallet: ${walletPublicKey.toString()}(${
+    `Listening for transactions to wallet: ${walletPublicKey.toString()} (${
       latestLoggedBalance / 1e9
     } SOL)`
   );
 
-  // const tokenAccountPublicKey = new PublicKey(
-  //   process.env.TOKEN_ACCOUNT_ADDRESS
-  // );
-  // let latestLoggedTokenBalance = await getAvaliableTokenBalanceForPresale(
-  //   tokenAccountPublicKey,
-  //   connection
-  // );
-  // console.log(`Now token balance: ${latestLoggedTokenBalance}`);
-
   const subscriptionId = connection.onAccountChange(
     walletPublicKey,
     async (accountInfo) => {
-      const newBalance = accountInfo.lamports;
-      const sendBalance = (newBalance - latestLoggedBalance) / 1e9;
-      latestLoggedBalance = newBalance;
-      if (sendBalance > 0) {
-        console.log(
-          `Account ${walletPublicKey.toString()} received ${sendBalance} SOL`
-        );
-      } else {
-        console.log(
-          `Account ${walletPublicKey.toString()} send ${sendBalance} SOL`
-        );
-        return;
-      }
-
       try {
-        const sourceWallet = await fetchTransactionDetails(walletPublicKey);
+        const newBalance = accountInfo.lamports;
+        const receivedBalance = (newBalance - latestLoggedBalance) / 1e9;
+        latestLoggedBalance = newBalance;
+        const senderWallet = await fetchTransactionDetails(
+          walletPublicKey,
+          connection
+        );
+        if (receivedBalance > 0) {
+          console.log(
+            `Account ${walletPublicKey.toString()} receive ${receivedBalance} SOL fron ${senderWallet}`
+          );
+        } else {
+          return;
+        }
 
-        const price = getPrice();
-        const amount = Math.floor(sendBalance / price);
-        console.log("token amount: ", amount);
+        const price = Number(getPricePerToken());
+        console.log(`price per token ${price}`);
+        const amount = Math.floor(receivedBalance / price);
 
-        const txid = await transferSPLtoken(sourceWallet, amount);
+        console.log(`Transfer: ${amount} tokens from ${senderWallet}`);
+        // const txid = await transferSPLtoken(senderWallet, amount);
 
-        return txid;
+        // return txid;
       } catch (error) {
         console.log("error: ", error);
         return error;
@@ -119,7 +113,10 @@ async function listenForTransactions(walletPublicKey, connection) {
   // connection.removeAccountChangeListener(subscriptionId);
 }
 
-async function getAvaliableTokenBalanceForPresale(tokenWalletKeypair, connection) {
+async function getAvaliableTokenBalanceForPresale(
+  tokenWalletKeypair,
+  connection
+) {
   tokenMinkPublickey = new PublicKey(process.env.TOKEN_MINT_ADDRESS);
 
   const tokenAccount = await getOrCreateAssociatedTokenAccount(
@@ -135,7 +132,7 @@ async function getAvaliableTokenBalanceForPresale(tokenWalletKeypair, connection
   return Math.floor(amount / 10 ** decimals);
 }
 
-async function fetchTransactionDetails(walletPublicKey) {
+async function fetchTransactionDetails(walletPublicKey, connection) {
   try {
     const transactionSignatures =
       await connection.getConfirmedSignaturesForAddress2(walletPublicKey, {
