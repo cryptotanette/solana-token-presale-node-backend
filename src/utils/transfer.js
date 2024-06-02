@@ -46,16 +46,13 @@ function initializeConnection() {
 }
 
 // Main function orchestrates sending tokens by calling the defined functions in order.
-async function transferSPLtoken(to, amount = 1) {
+async function transferSPLtoken(destinationWallet, amount = 1) {
   console.log("Starting Token Transfer Process");
 
   const connection = initializeConnection();
   const fromKeypair = initializeKeypair();
 
-  // Address receiving the tokens
-  const destinationWallet = new PublicKey(to);
-
-  if(fromKeypair.publicKey.toString() == destinationWallet.toString()){
+    if(fromKeypair.publicKey.toString() == destinationWallet.toString()){
     throw("same wallet");
   }
 
