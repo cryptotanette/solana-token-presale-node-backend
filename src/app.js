@@ -20,7 +20,7 @@ async function presaleStart() {
   const connection = initializeConnection();
   
   const now = new Date().getTime();
-  const cycle = getPresaleCycle(start, now);
+  const cycle = getPresaleCycle();
 
   if (cycle >= process.env.PRESALE_MAX_CYCLE) {
     console.log("End presale!");
@@ -39,7 +39,7 @@ async function presaleStart() {
 
 function getPricePerToken() {
   const now = new Date().getTime();
-  const cycle = getPresaleCycle(start, now);
+  const cycle = getPresaleCycle();
   const price = presaleStartPrice * 1.1 ** cycle;
 
   return price ? price : presaleStartPrice;
@@ -148,7 +148,6 @@ async function fetchTransactionDetails(walletPublicKey, connection) {
 }
 
 function getPresaleCycle(
-  start,
   now = new Date().getTime(),
   due = process.env.PRESALE_INCREASE_TIME
 ) {
