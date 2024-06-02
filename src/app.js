@@ -9,18 +9,16 @@ const walletPublicKey = new PublicKey(WALLET_ADDRESS);
 const tokenAccountPublicKey = new PublicKey(TOKEN_ACCOUNT_ADDRESS);
 
 const MAIN_PRICE = 0.0000101471;
-const startTime = new Date("6/1/24").getTime();
+const startTime = new Date(process.env.PRESALE_START).getTime();
 
 function getPrice() {
   let price = MAIN_PRICE;
   const now = new Date().getTime();
   console.log("now time: ", now);
-  let offset = Math.floor((now - startTime) / 86400 / 1000);
+  let offset = Math.floor((now - startTime) / 86400 / 1000 /3);
   console.log("offset: ", offset);
-  while (offset >= 3) {
-    price = price + price * 0.1;
-    offset -= 3;
-  }
+  price = price * (1.1**offset);
+
   console.log("current price", price);
   return price;
 }
